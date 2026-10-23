@@ -11,7 +11,7 @@
     "dev": "concurrently -n \"server,client\" -c \"cyan,magenta\" \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
     "dev:server": "npm run dev --prefix server",
     "dev:client": "npm run dev --prefix client",
-    "build": "npm run build --prefix server && npm run build --prefix client",
+    "build": "npm run build --prefix server && npm run build --prefix client && node -e \"const fs = require('fs'); fs.cpSync('client/dist', 'dist', { recursive: true });\"",
     "test": "npm run test --prefix server",
     "install:all": "npm install --prefix server && npm install --prefix client"
   },
