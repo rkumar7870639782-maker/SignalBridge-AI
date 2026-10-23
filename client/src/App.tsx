@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Header } from './components/Header';
 import { EmergencyDisclaimer } from './components/EmergencyDisclaimer';
 import { SampleSelector } from './components/SampleSelector';
@@ -25,7 +25,7 @@ export const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Poll or check system health on mount
+  // Poll or check system health on mount with abort cleanup
   useEffect(() => {
     let mounted = true;
     fetchHealth()
@@ -35,7 +35,7 @@ export const App: React.FC = () => {
           setLoadingHealth(false);
         }
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         console.warn('Backend health check delayed or offline:', err);
         if (mounted) {
           setLoadingHealth(false);
@@ -47,15 +47,15 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  const handleSelectSample = (sample: SampleReport) => {
+  const handleSelectSample = useCallback((sample: SampleReport) => {
     setSelectedSampleId(sample.id);
     setReportText(sample.reportText);
     setSelectedCategory(sample.category);
     setHasIndependentEvidence(sample.expectedStatus === 'Verified');
     setErrorMessage(null);
-  };
+  }, []);
 
-  const handleAnalyze = async () => {
+  const handleAnalyze = useCallback(async () => {
     setIsLoading(true);
     setErrorMessage(null);
 
@@ -66,24 +66,28 @@ export const App: React.FC = () => {
         hasIndependentEvidence
       );
       setResult(data);
-    } catch (err: any) {
-      console.error('Analysis error:', err);
-      setErrorMessage(
-        err.message || 'An error occurred while analyzing the incident report.'
-      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'An error occurred while analyzing the incident report.';
+      console.error('Analysis error:', msg);
+      setErrorMessage(msg);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [reportText, selectedCategory, hasIndependentEvidence]);
 
-  const handleClear = () => {
+  const handleClear = useCallback(() => {
     setReportText('');
     setSelectedSampleId(null);
     setSelectedCategory('Auto-Detect');
     setHasIndependentEvidence(false);
     setResult(null);
     setErrorMessage(null);
-  };
+  }, []);
+
+  const handleReportTextChange = useCallback((text: string) => {
+    setReportText(text);
+    setSelectedSampleId(null);
+  }, []);
 
   return (
     <div className="app-wrapper">
@@ -104,10 +108,7 @@ export const App: React.FC = () => {
 
             <ReportInput
               reportText={reportText}
-              setReportText={(text) => {
-                setReportText(text);
-                setSelectedSampleId(null);
-              }}
+              setReportText={handleReportTextChange}
               selectedCategory={selectedCategory}
               setSelectedCategory={setSelectedCategory}
               hasIndependentEvidence={hasIndependentEvidence}

@@ -1,6 +1,6 @@
 import React from 'react';
 
-export const EmergencyDisclaimer: React.FC = () => {
+export const EmergencyDisclaimer: React.FC = React.memo(() => {
   return (
     <aside
       className="safety-disclaimer-banner"
@@ -32,4 +32,4 @@ export const EmergencyDisclaimer: React.FC = () => {
       </div>
     </aside>
   );
-};
+});

@@ -7,7 +7,7 @@ interface SampleSelectorProps {
   onSelectSample: (sample: SampleReport) => void;
 }
 
-export const SampleSelector: React.FC<SampleSelectorProps> = ({
+export const SampleSelector: React.FC<SampleSelectorProps> = React.memo(({
   selectedSampleId,
   onSelectSample,
 }) => {
@@ -57,4 +57,4 @@ export const SampleSelector: React.FC<SampleSelectorProps> = ({
       </div>
     </div>
   );
-};
+});

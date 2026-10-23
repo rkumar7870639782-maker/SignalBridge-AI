@@ -6,7 +6,7 @@ interface HeaderProps {
   loadingHealth: boolean;
 }
 
-export const Header: React.FC<HeaderProps> = ({ health, loadingHealth }) => {
+export const Header: React.FC<HeaderProps> = React.memo(({ health, loadingHealth }) => {
   return (
     <header className="header-container" role="banner">
       <div className="header-inner">
@@ -71,4 +71,4 @@ export const Header: React.FC<HeaderProps> = ({ health, loadingHealth }) => {
       </div>
     </header>
   );
-};
+});

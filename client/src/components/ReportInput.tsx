@@ -23,7 +23,7 @@ const CATEGORIES: { label: string; value: ReportCategory | 'Auto-Detect' }[] = [
   { label: 'Other', value: 'Other' },
 ];
 
-export const ReportInput: React.FC<ReportInputProps> = ({
+export const ReportInput: React.FC<ReportInputProps> = React.memo(({
   reportText,
   setReportText,
   selectedCategory,
@@ -231,4 +231,4 @@ export const ReportInput: React.FC<ReportInputProps> = ({
       </form>
     </section>
   );
-};
+});

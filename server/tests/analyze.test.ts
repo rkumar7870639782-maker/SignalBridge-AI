@@ -6,6 +6,8 @@ import {
   extractReliableTime,
   validateGeminiResponse,
 } from '../src/gemini.js';
+import { sanitizeReportText, SlidingWindowRateLimiter } from '../src/middleware/security.js';
+import { MemoryCache } from '../src/utils/cache.js';
 
 describe('SignalBridge AI Verification & Guardrail Tests', () => {
   test('Strict Rule: Single uncorroborated eyewitness report must NOT be marked Verified', () => {
@@ -234,4 +236,80 @@ describe('PRIORITY 3 — Gemini API Fallback & Safe Error Catching Tests', () =>
     }
   });
 });
+
+describe('PRIORITY 4 — Security, Rate Limiting & Input Sanitization Tests', () => {
+  test('sanitizeReportText: Neutralizes null bytes and non-printable control characters', () => {
+    const maliciousInput = 'Accident on I-80\x00\x08 near exit 14\x1F with 2 cars.';
+    const sanitized = sanitizeReportText(maliciousInput);
+
+    assert.equal(sanitized.includes('\x00'), false, 'Null bytes must be completely stripped');
+    assert.equal(sanitized.includes('\x08'), false, 'Backspace control character must be stripped');
+    assert.equal(sanitized, 'Accident on I-80 near exit 14 with 2 cars.');
+  });
+
+  test('sanitizeReportText: Strips Unicode bidirectional override text spoofing characters', () => {
+    // Unicode BDO (\u202E) used in spoofing attacks
+    const spoofedInput = 'Emergency Alert \u202Egninraw danger';
+    const sanitized = sanitizeReportText(spoofedInput);
+
+    assert.equal(sanitized.includes('\u202E'), false, 'BDO spoofing char must be stripped');
+  });
+
+  test('SlidingWindowRateLimiter: Allows requests within quota and blocks when limit is exceeded', () => {
+    const testLimiter = new SlidingWindowRateLimiter(1000, 3); // 3 requests per second
+    const testIp = '192.168.1.100';
+
+    const r1 = testLimiter.check(testIp);
+    assert.equal(r1.allowed, true);
+    assert.equal(r1.remaining, 2);
+
+    const r2 = testLimiter.check(testIp);
+    assert.equal(r2.allowed, true);
+    assert.equal(r2.remaining, 1);
+
+    const r3 = testLimiter.check(testIp);
+    assert.equal(r3.allowed, true);
+    assert.equal(r3.remaining, 0);
+
+    // 4th request must be rejected
+    const r4 = testLimiter.check(testIp);
+    assert.equal(r4.allowed, false);
+    assert.equal(r4.remaining, 0);
+    assert.ok(r4.retryAfterSec > 0);
+  });
+});
+
+describe('PRIORITY 5 — Efficiency, Cache & Performance Tests', () => {
+  test('MemoryCache: Stores and retrieves data with LRU eviction and hit ratio calculation', () => {
+    const cache = new MemoryCache<{ data: string }>(2, 5000);
+
+    cache.set('key1', { data: 'val1' });
+    cache.set('key2', { data: 'val2' });
+
+    assert.deepEqual(cache.get('key1'), { data: 'val1' });
+
+    // Insert 3rd item to evict LRU (key2 should be oldest accessed)
+    cache.set('key3', { data: 'val3' });
+
+    assert.notEqual(cache.get('key1'), null, 'key1 was recently accessed and should remain');
+    assert.equal(cache.get('key2'), null, 'key2 should be evicted due to LRU policy');
+    assert.deepEqual(cache.get('key3'), { data: 'val3' });
+
+    const stats = cache.getStats();
+    assert.ok(stats.hits > 0);
+    assert.ok(stats.hitRatio > 0);
+  });
+
+  test('analyzeReportWithGemini: Second identical call hits memory cache instantly', async () => {
+    const report = 'Flooding observed across Route 4 westbound about 15 minutes ago.';
+    
+    const firstCall = await analyzeReportWithGemini(report, 'Weather', false);
+    assert.ok(firstCall);
+
+    const secondCall = await analyzeReportWithGemini(report, 'Weather', false);
+    assert.ok(secondCall);
+    assert.equal(secondCall.metadata.isCached, true, 'Subsequent identical query must return from cache');
+  });
+});
+
 

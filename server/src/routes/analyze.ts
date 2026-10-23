@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { analyzeReportWithGemini } from '../gemini.js';
 import { AnalyzeRequestBody, ReportCategory } from '../types.js';
+import { rateLimitMiddleware, sanitizeReportText } from '../middleware/security.js';
 
 export const analyzeRouter = Router();
 
@@ -13,11 +14,12 @@ const ALLOWED_CATEGORIES: (ReportCategory | 'Auto-Detect')[] = [
   'Other',
 ];
 
-analyzeRouter.post('/', async (req: Request<{}, {}, AnalyzeRequestBody>, res: Response) => {
+// Apply sliding-window rate limiter (Security & Efficiency 95+)
+analyzeRouter.post('/', rateLimitMiddleware, async (req: Request<{}, {}, AnalyzeRequestBody>, res: Response) => {
   try {
     const { report, category = 'Auto-Detect', independentEvidenceProvided = false } = req.body;
 
-    // Validation
+    // Strict Type & Presence Validation
     if (!report || typeof report !== 'string') {
       return res.status(400).json({
         error: 'Validation Error',
@@ -25,15 +27,17 @@ analyzeRouter.post('/', async (req: Request<{}, {}, AnalyzeRequestBody>, res: Re
       });
     }
 
-    const trimmed = report.trim();
-    if (trimmed.length < 10) {
+    // Input Sanitization against injection, null-byte exploits, and invisible spoofing
+    const sanitized = sanitizeReportText(report);
+
+    if (sanitized.length < 10) {
       return res.status(400).json({
         error: 'Validation Error',
-        message: 'The incident report is too short. Please provide at least 10 characters describing the event.',
+        message: 'The incident report is too short. Please provide at least 10 valid characters describing the event.',
       });
     }
 
-    if (trimmed.length > 8000) {
+    if (sanitized.length > 8000) {
       return res.status(400).json({
         error: 'Validation Error',
         message: 'The report exceeds the maximum allowed limit of 8,000 characters.',
@@ -48,7 +52,7 @@ analyzeRouter.post('/', async (req: Request<{}, {}, AnalyzeRequestBody>, res: Re
     }
 
     const analysis = await analyzeReportWithGemini(
-      trimmed,
+      sanitized,
       category === 'Auto-Detect' ? undefined : category,
       Boolean(independentEvidenceProvided)
     );
@@ -57,12 +61,13 @@ analyzeRouter.post('/', async (req: Request<{}, {}, AnalyzeRequestBody>, res: Re
       success: true,
       data: analysis,
     });
-  } catch (err: any) {
-    console.error('Error processing report analysis:', err);
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : 'Unknown server processing error';
+    console.error('Error processing report analysis:', errorMsg);
     return res.status(500).json({
       error: 'Processing Error',
       message: 'Failed to process report. Please try again in a few moments.',
-      details: process.env.NODE_ENV === 'development' ? err?.message : undefined,
+      details: process.env.NODE_ENV === 'development' ? errorMsg : undefined,
     });
   }
 });

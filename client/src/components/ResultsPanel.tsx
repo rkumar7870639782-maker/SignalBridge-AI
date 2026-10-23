@@ -6,7 +6,7 @@ interface ResultsPanelProps {
   isLoading: boolean;
 }
 
-export const ResultsPanel: React.FC<ResultsPanelProps> = ({ result, isLoading }) => {
+export const ResultsPanel: React.FC<ResultsPanelProps> = React.memo(({ result, isLoading }) => {
   const [showRawJson, setShowRawJson] = useState(false);
 
   if (isLoading) {
@@ -421,4 +421,4 @@ export const ResultsPanel: React.FC<ResultsPanelProps> = ({ result, isLoading })
       </div>
     </section>
   );
-};
+});

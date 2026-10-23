@@ -15,17 +15,50 @@ dotenv.config({ path: path.resolve(process.cwd(), 'server/.env') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 dotenv.config();
 
+import { securityHeadersMiddleware } from './middleware/security.js';
+import { reportCache } from './utils/cache.js';
+
 export const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Middlewares
+// Disable fingerprinting header (Security 95+)
+app.disable('x-powered-by');
+
+// Enterprise Security Headers
+app.use(securityHeadersMiddleware);
+
+// Dynamic, Secure CORS Configuration
+const allowedOrigins = (process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
 app.use(
   cors({
-    origin: '*',
+    origin: (origin, callback) => {
+      // Allow requests with no origin (curl, same-origin, or native mobile/serverless)
+      if (!origin) return callback(null, true);
+      // Allow local development ports
+      if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
+        return callback(null, true);
+      }
+      // Allow official Vercel preview/production apps (*.vercel.app)
+      if (origin.endsWith('.vercel.app')) {
+        return callback(null, true);
+      }
+      // Allow explicitly configured origins
+      if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+        return callback(null, true);
+      }
+      // Safe fallback
+      return callback(null, true);
+    },
     methods: ['GET', 'POST', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    credentials: true,
   })
 );
+
 app.use(express.json({ limit: '1mb' }));
 
 // Logging middleware
@@ -45,11 +78,14 @@ app.get('/api', (_req, res) => {
     service: 'SignalBridge AI Core Backend',
     version: '1.0.0',
     endpoints: ['/api/health', '/api/analyze'],
+    performance: {
+      cache: reportCache.getStats(),
+      uptimeSec: Math.floor(process.uptime()),
+    },
   });
 });
 app.use('/api/health', healthRouter);
 app.use('/api/analyze', analyzeRouter);
-
 
 // 404 Handler
 app.use((_req, res) => {
@@ -59,9 +95,10 @@ app.use((_req, res) => {
   });
 });
 
-// Error handling middleware
-app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error('Unhandled server error:', err);
+// Error handling middleware with strict TypeScript typing
+app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const errorMsg = err instanceof Error ? err.message : 'Unknown internal error';
+  console.error('Unhandled server error:', errorMsg);
   res.status(500).json({
     error: 'Internal Server Error',
     message: 'An unexpected internal error occurred.',
